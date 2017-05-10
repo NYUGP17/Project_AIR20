@@ -208,21 +208,24 @@ void extract_feature_line(
 			}
 		}
 		Vector3d kd_sum = kd.colwise().sum();
+		std::cout << kd_sum << std::endl;
 		SparseMatrix<double> G; // gradient
 		MatrixXd vv;
 		igl::slice(V, Fr.row(f), 1, vv);
 		igl::grad(vv, MatrixXi(RowVector3i(0, 1, 2)), G);
 		VectorXd gex = VectorXd(G * ex);
 
-		if (ex.maxCoeff() < 0.0 || ex.minCoeff() > 0.0) {
+		if ((ex.array() == 0.0).any()) // skip zeros
+			continue;
+		if (ex.maxCoeff() <= 0.0 || ex.minCoeff() >= 0.0) {
 			continue; // no feature line
-		} else if (sign * gex.dot(kd_sum) > 0) {
+		} else if (sign * gex.dot(kd_sum) >= 0.0) {
 			continue; // no feature line
 		} else {
 			VectorXd kmax, kmin;
 			igl::slice(Kmax, Fr.row(f), 1, kmax);
 			igl::slice(Kmin, Fr.row(f), 1, kmin);
-			if (sign * (std::abs(kmax.colwise().sum()[0]) - std::abs(kmin.colwise().sum()[0])) < 0.0)
+			if (sign * (std::abs(kmax.colwise().sum()[0]) - std::abs(kmin.colwise().sum()[0])) <= 0.0)
 				continue; // no feature line
 
 			int count = 0;
