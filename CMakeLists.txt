@@ -3,6 +3,33 @@ project(ftlext)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
+################################################################################
+# Create a new default release build type that compiles assertions.
+################################################################################
+set(CMAKE_CXX_FLAGS_RELWITHASSERT        "-O3" CACHE STRING "Flags used during RelWithAssert builds" FORCE)
+set(CMAKE_C_FLAGS_RELWITHASSERT          "-O3" CACHE STRING "Flags used during RelWithAssert builds" FORCE)
+set(CMAKE_EXE_LINKER_FLAGS_RELWITHASSERT    "" CACHE STRING "Flags used during RelWithAssert builds" FORCE)
+set(CMAKE_SHARED_LINKER_FLAGS_RELWITHASSERT "" CACHE STRING "Flags used during RelWithAssert builds" FORCE)
+set(CMAKE_MODULE_LINKER_FLAGS_RELWITHASSERT "" CACHE STRING "Flags used during RelWithAssert builds" FORCE)
+set(CMAKE_STATIC_LINKER_FLAGS_RELWITHASSERT "" CACHE STRING "Flags used during RelWithAssert builds" FORCE)
+mark_as_advanced(
+    CMAKE_CXX_FLAGS_RELWITHASSERT
+    CMAKE_C_FLAGS_RELWITHASSERT
+    CMAKE_EXE_LINKER_FLAGS_RELWITHASSERT
+    CMAKE_SHARED_LINKER_FLAGS_RELWITHASSERT
+    CMAKE_MODULE_LINKER_FLAGS_RELWITHASSERT
+    CMAKE_STATIC_LINKER_FLAGS_RELWITHASSERT
+    )
+
+################################################################################
+# Configure libigl
+################################################################################
+if(NOT CMAKE_BUILD_TYPE)
+    message(STATUS "No build type selected, default to RelWithAssert")
+    set(CMAKE_BUILD_TYPE "RelWithAssert")
+endif()
+
+
 find_package(LIBIGL QUIET)
 
 if (NOT LIBIGL_FOUND)
@@ -56,7 +83,12 @@ endif()
 # Adding libigl: choose the path to your local copy libigl 
 # This is going to compile everything you requested 
 #message(FATAL_ERROR "${PROJECT_SOURCE_DIR}/../libigl/cmake")
+add_definitions(-Wno-unused-variable) # Embree in LibIGL currently emits unused var warnings
 add_subdirectory("${LIBIGL_INCLUDE_DIR}/../shared/cmake" "libigl")
+
+remove_definitions(-Wno-unused-variable) # We want unused var warnings for our code...
+add_definitions(-Wall)          # ... and everything else
+add_definitions(-Wsign-compare) # (Clang doesn't care about comparison signedness by default...)
 
 # libigl information 
 message("libigl includes: ${LIBIGL_INCLUDE_DIRS}")
@@ -66,10 +98,10 @@ message("libigl extra libraries: ${LIBIGL_EXTRA_LIBRARIES}")
 message("libigl definitions: ${LIBIGL_DEFINITIONS}")
 
 # Prepare the build environment
-include_directories(${LIBIGL_INCLUDE_DIRS})
 add_definitions(${LIBIGL_DEFINITIONS})
 
 # Add your project files
 FILE(GLOB SRCFILES *.cpp)
-add_executable(${PROJECT_NAME}_bin ${SRCFILES} ${LIBIGL_EXTRA_SOURCES})
-target_link_libraries(${PROJECT_NAME}_bin ${LIBIGL_LIBRARIES} ${LIBIGL_EXTRA_LIBRARIES})
+add_executable(${PROJECT_NAME} ${SRCFILES} ${LIBIGL_EXTRA_SOURCES})
+target_link_libraries(${PROJECT_NAME} ${LIBIGL_LIBRARIES} ${LIBIGL_EXTRA_LIBRARIES})
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${LIBIGL_INCLUDE_DIRS})
