@@ -121,9 +121,7 @@ void extremality_coefficients(
 	VectorXd gK = VectorXd(G * K);
 
 	std::vector<std::vector<int> > VF, VFi; // vertex-face adjacency list
-	MatrixXi TT, TTi; // face-face adjacency list
 	igl::vertex_triangle_adjacency(V, F, VF, VFi);
-	igl::triangle_triangle_adjacency(F, TT, TTi);
 
 	for (int v = 0; v < V.rows(); v++) {
 		double area = 0.0;
@@ -234,18 +232,18 @@ void extract_feature_line(
 			continue; // condition 2 not satisfied
 
 		int count = 0;
-		for (int i = 0; i < 3; i++)
-			for (int j = i+1; j < 3; j++) {
-				if (ex[i] * ex[j] < 0) {
-					// add mid point
-					double a = std::abs(ex[i]);
-					double b = std::abs(ex[j]);
-					Vector3d mid = (b*V.row(Fr(f, i)) + a*V.row(Fr(f, j))) / (a + b);
-					edges[count].push_back(mid);
-					// mark edge j i
-					marked_edges.insert(std::make_pair(Fr(f, j), Fr(f, i)));
-					count++;
-				}
+		for (int i = 0; i < 3; i++) {
+			int j = (i + 1) % 3;
+			if (ex[i] * ex[j] < 0) {
+				// add mid point
+				double a = std::abs(ex[i]);
+				double b = std::abs(ex[j]);
+				Vector3d mid = (b*V.row(Fr(f, i)) + a*V.row(Fr(f, j))) / (a + b);
+				edges[count].push_back(mid);
+				// mark edge j i
+				marked_edges.insert(std::make_pair(Fr(f, j), Fr(f, i)));
+				count++;
+			}
 			}
 		assert(count == 2);
 
@@ -254,12 +252,12 @@ void extract_feature_line(
 	for (int i = 0; i < singular_indices.size(); i++) {
 		int fi = singular_indices[i];
 		std::vector<std::pair<int, int>> marked;
-		for (int es = 0; es < 3; es++)
-			for (int ee = es+1; ee < 3; ee++) {
-				auto search = marked_edges.find(std::make_pair(F(fi, es), F(fi, ee)));
-				if (search != marked_edges.end())
-					marked.push_back(*search);
-			}
+		for (int es = 0; es < 3; es++) {
+			int ee = (es + 1) % 3;
+			auto search = marked_edges.find(std::make_pair(F(fi, es), F(fi, ee)));
+			if (search != marked_edges.end())
+				marked.push_back(*search);
+		}
 		if (marked.size() < 2)
 			continue;
 		if (marked.size() == 2) {
