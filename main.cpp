@@ -9,6 +9,7 @@
 #include <igl/slice.h>
 #include <igl/jet.h>
 #include <igl/viewer/Viewer.h>
+#include <set>
 
 using namespace Eigen;
 using Viewer = igl::viewer::Viewer;
@@ -191,6 +192,7 @@ void extract_feature_line(
 	igl::triangle_triangle_adjacency(Fr, TT, TTi);
 
 	std::vector<Vector3d> edges[2];
+	std::set<std::pair<int, int>> marked_edges;
 
 	for (int f = 0; f < Fr.rows(); f++) {
 		Vector3d ex;
@@ -234,18 +236,62 @@ void extract_feature_line(
 					double b = std::abs(ex[j]);
 					Vector3d mid = (b*V.row(Fr(f, i)) + a*V.row(Fr(f, j))) / (a + b);
 					edges[count].push_back(mid);
+					// mark edge j i
+					marked_edges.insert(std::make_pair(Fr(f, j), Fr(f, i)));
 					count++;
 				}
 			}
 		assert(count == 2);
 
-		// create start points and end points
-		edges_start.resize(edges[0].size(), 3);
-		edges_end.resize(edges[1].size(), 3);
-		for (int i = 0; i < edges[0].size(); i++) {
-			edges_start.row(i) = edges[0][i];
-			edges_end.row(i) = edges[1][i];
+	}
+	// processing singular triangles
+	for (int i = 0; i < singular_indices.size(); i++) {
+		int fi = singular_indices[i];
+		std::vector<std::pair<int, int>> marked;
+		for (int es = 0; es < 3; es++)
+			for (int ee = es+1; ee < 3; ee++) {
+				auto search = marked_edges.find(std::make_pair(F(fi, es), F(fi, ee)));
+				if (search != marked_edges.end())
+					marked.push_back(*search);
+			}
+		if (marked.size() < 2)
+			continue;
+		if (marked.size() == 2) {
+			// connect two marked edges
+			for (int k = 0; k < 2; k++) {
+				int i = marked[k].first;
+				int j = marked[k].second;
+				double a = std::abs(Ex[i]);
+				double b = std::abs(Ex[j]);
+				Vector3d mid = (b*V.row(i) + a*V.row(j)) / (a + b);
+				edges[k].push_back(mid);
+			}
 		}
+		if (marked.size() == 3) {
+			Vector3d v0 = V.row(F(fi, 0));
+			Vector3d v1 = V.row(F(fi, 1));
+			Vector3d v2 = V.row(F(fi, 2));
+			Vector3d bc = (v0 + v1 + v2) / 3.0; // barycenter
+			for (int k = 0; k < 3; k++)
+				edges[0].push_back(bc);
+			for (int k = 0; k < 3; k++) {
+				int i = marked[k].first;
+				int j = marked[k].second;
+				double a = std::abs(Ex[i]);
+				double b = std::abs(Ex[j]);
+				Vector3d mid = (b*V.row(i) + a*V.row(j)) / (a + b);
+				edges[1].push_back(mid);
+			}
+
+		}
+
+	}
+	// create start points and end points
+	edges_start.resize(edges[0].size(), 3);
+	edges_end.resize(edges[1].size(), 3);
+	for (int i = 0; i < edges[0].size(); i++) {
+		edges_start.row(i) = edges[0][i];
+		edges_end.row(i) = edges[1][i];
 	}
 	
 }
