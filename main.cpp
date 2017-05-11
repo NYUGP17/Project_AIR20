@@ -89,8 +89,8 @@ void principal_curvatures(
 		double area = 0.0;
 		for (int i = 0; i < VF[v].size(); i++)
 			area += A[VF[v][i]];
-		Kmax[v] = solver.eigenvalues()[indices[0]] / area;
-		Kmin[v] = solver.eigenvalues()[indices[1]] / area;
+		Kmax[v] = 1e3 * solver.eigenvalues()[indices[0]] / area;
+		Kmin[v] = 1e3 * solver.eigenvalues()[indices[1]] / area;
 		Kdmax.row(v) = solver.eigenvectors().col(indices[0]).normalized();
 		Kdmin.row(v) = solver.eigenvectors().col(indices[1]).normalized();
 	}
@@ -105,21 +105,18 @@ void extremality_coefficients(
 	VectorXd &Ex)
 {
 	Ex.resize(V.rows());
-	// only consider regular faces
-	MatrixXi Fr;
-	igl::slice(F, regular_indices, 1, Fr);
 
 	VectorXd A; // double area
-	igl::doublearea(V, Fr, A);
+	igl::doublearea(V, F, A);
 
 	SparseMatrix<double> G; // gradient
-	igl::grad(V, Fr, G);
+	igl::grad(V, F, G);
 	VectorXd gK = VectorXd(G * K);
 
 	std::vector<std::vector<int> > VF, VFi; // vertex-face adjacency list
 	MatrixXi TT, TTi; // face-face adjacency list
-	igl::vertex_triangle_adjacency(V, Fr, VF, VFi);
-	igl::triangle_triangle_adjacency(Fr, TT, TTi);
+	igl::vertex_triangle_adjacency(V, F, VF, VFi);
+	igl::triangle_triangle_adjacency(F, TT, TTi);
 
 	for (int v = 0; v < V.rows(); v++) {
 		double area = 0.0;
@@ -130,9 +127,9 @@ void extremality_coefficients(
 		for (int i = 0; i < VF[v].size(); i++) {
 			int f = VF[v][i];
 			Vector3d g = Vector3d(
-				gK[0 * Fr.rows() + f],
-				gK[1 * Fr.rows() + f],
-				gK[2 * Fr.rows() + f]
+				gK[0 * F.rows() + f],
+				gK[1 * F.rows() + f],
+				gK[2 * F.rows() + f]
 			);
 			ex += A[f] * g.dot(Kd.row(v));
 		}
@@ -225,13 +222,11 @@ void extract_feature_line(
 		VectorXd kmax, kmin;
 		igl::slice(Kmax, Fr.row(f), 1, kmax);
 		igl::slice(Kmin, Fr.row(f), 1, kmin);
-		std::cout << kmax.colwise().sum() << std::endl;
-		assert(false);
 		if (sign * (std::abs(kmax.colwise().sum()[0]) - std::abs(kmin.colwise().sum()[0])) <= 0.0)
 			continue; // condition 2 not satisfied
 
 		int count = 0;
-		for (int i = 0; i < 3; i++) {
+		for (int i = 0; i < 3; i++)
 			for (int j = i+1; j < 3; j++) {
 				if (ex[i] * ex[j] < 0) {
 					// add mid point
@@ -242,8 +237,7 @@ void extract_feature_line(
 					count++;
 				}
 			}
-			assert(count == 2);
-		}
+		assert(count == 2);
 
 		// create start points and end points
 		edges_start.resize(edges[0].size(), 3);
@@ -256,14 +250,35 @@ void extract_feature_line(
 	
 }
 
-void show_curvatures(Viewer &viewer)
+void show_curvatures(Viewer &viewer) {
+	static int mode = 0;
+	viewer.data.clear();
+	viewer.data.set_mesh(V, F);
+	MatrixXd color_map;
+	if (mode == 1) {
+		igl::jet(Kmin, true, color_map);
+		viewer.data.set_colors(color_map);
+	} else if (mode == 0) {
+		igl::jet(Kmax, true, color_map);
+		viewer.data.set_colors(color_map);
+	}
+	mode = 1 - mode;
+
+}
+
+void show_principal_directions(Viewer &viewer)
 {
+	static int mode = 0;
 	double coeff = 0.01 * igl::bounding_box_diagonal(V);
 	viewer.data.clear();
-	viewer.data.add_edges(V, V + coeff * Kdmin, RowVector3d(0.0, 1.0, 0.0));
-	viewer.data.add_edges(V, V - coeff * Kdmin, RowVector3d(0.0, 1.0, 0.0));
-	viewer.data.add_edges(V, V + coeff * Kdmax, RowVector3d(1.0, 0.0, 0.0));
-	viewer.data.add_edges(V, V - coeff * Kdmax, RowVector3d(1.0, 0.0, 0.0));
+	if (mode == 1) {
+		viewer.data.add_edges(V, V + coeff * Kdmin, RowVector3d(0.0, 1.0, 0.0));
+		viewer.data.add_edges(V, V - coeff * Kdmin, RowVector3d(0.0, 1.0, 0.0));
+	} else if(mode == 0) {
+		viewer.data.add_edges(V, V + coeff * Kdmax, RowVector3d(1.0, 0.0, 0.0));
+		viewer.data.add_edges(V, V - coeff * Kdmax, RowVector3d(1.0, 0.0, 0.0));
+	}
+	mode = 1 - mode;
 }
 
 void show_singular_triangles(Viewer &viewer)
@@ -303,7 +318,7 @@ void show_feature_lines(Viewer &viewer) {
 	viewer.data.clear();
 	viewer.data.set_mesh(V, F);
 	viewer.data.add_edges(start[0], end[0], RowVector3d(1.0, 0.0, 0.0));
-	viewer.data.add_edges(start[1], end[1], RowVector3d(0.0, 1.0, 0.0));
+	viewer.data.add_edges(start[1], end[1], RowVector3d(0.0, 0.0, 1.0));
 
 }
 
@@ -330,6 +345,9 @@ int main(int argc, char *argv[])
 	viewer.callback_init = [&](Viewer &v) {
 		v.ngui->addButton("Show curvatures", [&](){
 			show_curvatures(v);
+		});
+		v.ngui->addButton("Show principal directions", [&](){
+			show_principal_directions(v);
 		});
 		v.ngui->addButton("Show singular triangles", [&](){
 			show_singular_triangles(v);
