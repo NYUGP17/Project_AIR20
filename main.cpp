@@ -8,6 +8,8 @@
 #include <igl/grad.h>
 #include <igl/slice.h>
 #include <igl/jet.h>
+#include <igl/adjacency_list.h>
+#include <igl/cotmatrix.h>
 #include <igl/viewer/Viewer.h>
 #include <set>
 
@@ -31,6 +33,8 @@ VectorXi regular_indices(0, 1);
 // per vertex extremalities
 VectorXd Exmin(0, 1);
 VectorXd Exmax(0, 1);
+
+int sgn(double x) { return (x > 0) - (x < 0); }
 
 // compute curvatures and principal directions
 void principal_curvatures(
@@ -272,6 +276,7 @@ void extract_feature_line(
 			Vector3d v1 = V.row(F(fi, 1));
 			Vector3d v2 = V.row(F(fi, 2));
 			Vector3d bc = (v0 + v1 + v2) / 3.0; // barycenter
+			// connect marked edges to the barycenter
 			for (int k = 0; k < 3; k++)
 				edges[0].push_back(bc);
 			for (int k = 0; k < 3; k++) {
@@ -293,7 +298,31 @@ void extract_feature_line(
 		edges_start.row(i) = edges[0][i];
 		edges_end.row(i) = edges[1][i];
 	}
-	
+}
+
+void smooth_extremality(
+	const MatrixXd &V,
+	const MatrixXi &F,
+	const MatrixXd &Kd,
+	VectorXd &Ex)
+{
+	std::vector<std::vector<int> > A; // adjacency list
+	igl::adjacency_list(F, A);
+
+	// calculate cotan laplacian
+	SparseMatrix<double> L;
+	igl::cotmatrix(V, F, L);
+
+	VectorXd LEx(V.rows());
+	for (int v = 0; v < V.rows(); v++) {
+		double lp = 0.0;
+		for (int vn : A[v]) {
+			int sign = sgn(Kd.row(v).dot(Kd.row(vn)));
+			lp += L.coeffRef(v, vn) * (sign * Ex[vn] - Ex[v]);
+		}
+		LEx[v] = lp;
+	}
+	Ex += LEx;
 }
 
 void show_curvatures(Viewer &viewer) {
@@ -397,6 +426,10 @@ int main(int argc, char *argv[])
 		});
 		v.ngui->addButton("Show singular triangles", [&](){
 			show_singular_triangles(v);
+		});
+		v.ngui->addButton("Smooth extremalities", [&](){
+			smooth_extremality(V, F, Kmax, Exmax);
+			smooth_extremality(V, F, Kmin, Exmin);
 		});
 		v.ngui->addButton("Show extremalities", [&](){
 			show_extremalities(v);
