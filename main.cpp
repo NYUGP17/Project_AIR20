@@ -157,7 +157,7 @@ void mark_singular_triangles(
 			for (int j = i+1; j < 3; j++) {
 				sign_min *= Kdmin.row(F(f, i)).dot(Kdmin.row(F(f, j)));
 				sign_max *= Kdmax.row(F(f, i)).dot(Kdmax.row(F(f, j)));
-		}
+			}
 		if (sign_min > 0.0 && sign_max > 0.0) {
 			regular_index_vector.push_back(f);
 		} else {
@@ -207,39 +207,41 @@ void extract_feature_line(
 				ex[i] = -ex[i];
 			}
 		}
+
+		if ((ex.array() == 0.0).any()) // skip zeros
+			continue;
+		if (ex.maxCoeff() <= 0.0 || ex.minCoeff() >= 0.0)
+			continue; // no zero points
+
 		Vector3d kd_sum = kd.colwise().sum();
-		std::cout << kd_sum << std::endl;
 		SparseMatrix<double> G; // gradient
 		MatrixXd vv;
 		igl::slice(V, Fr.row(f), 1, vv);
 		igl::grad(vv, MatrixXi(RowVector3i(0, 1, 2)), G);
 		VectorXd gex = VectorXd(G * ex);
+		if (sign * gex.dot(kd_sum) >= 0.0)
+			continue; // condition 1 not satisfied
 
-		if ((ex.array() == 0.0).any()) // skip zeros
-			continue;
-		if (ex.maxCoeff() <= 0.0 || ex.minCoeff() >= 0.0) {
-			continue; // no feature line
-		} else if (sign * gex.dot(kd_sum) >= 0.0) {
-			continue; // no feature line
-		} else {
-			VectorXd kmax, kmin;
-			igl::slice(Kmax, Fr.row(f), 1, kmax);
-			igl::slice(Kmin, Fr.row(f), 1, kmin);
-			if (sign * (std::abs(kmax.colwise().sum()[0]) - std::abs(kmin.colwise().sum()[0])) <= 0.0)
-				continue; // no feature line
+		VectorXd kmax, kmin;
+		igl::slice(Kmax, Fr.row(f), 1, kmax);
+		igl::slice(Kmin, Fr.row(f), 1, kmin);
+		std::cout << kmax.colwise().sum() << std::endl;
+		assert(false);
+		if (sign * (std::abs(kmax.colwise().sum()[0]) - std::abs(kmin.colwise().sum()[0])) <= 0.0)
+			continue; // condition 2 not satisfied
 
-			int count = 0;
-			for (int i = 0; i < 3; i++)
-				for (int j = i+1; j < 3; j++) {
-					if (ex[i] * ex[j] < 0) {
-						// add mid point
-						double a = std::abs(ex[i]);
-						double b = std::abs(ex[j]);
-						Vector3d mid = (b*V.row(Fr(f, i)) + a*V.row(Fr(f, j))) / (a + b);
-						edges[count].push_back(mid);
-						count++;
-					}
+		int count = 0;
+		for (int i = 0; i < 3; i++) {
+			for (int j = i+1; j < 3; j++) {
+				if (ex[i] * ex[j] < 0) {
+					// add mid point
+					double a = std::abs(ex[i]);
+					double b = std::abs(ex[j]);
+					Vector3d mid = (b*V.row(Fr(f, i)) + a*V.row(Fr(f, j))) / (a + b);
+					edges[count].push_back(mid);
+					count++;
 				}
+			}
 			assert(count == 2);
 		}
 
