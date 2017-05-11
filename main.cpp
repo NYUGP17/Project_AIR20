@@ -10,6 +10,8 @@
 #include <igl/jet.h>
 #include <igl/adjacency_list.h>
 #include <igl/cotmatrix.h>
+#include <igl/massmatrix.h>
+#include <igl/invert_diag.h>
 #include <igl/viewer/Viewer.h>
 #include <set>
 
@@ -211,8 +213,8 @@ void extract_feature_line(
 			}
 		}
 
-		if ((ex.array() == 0.0).any()) // skip zeros
-			continue;
+		if ((ex.array() == 0.0).any())
+			continue; // skip zeros
 		if (ex.maxCoeff() <= 0.0 || ex.minCoeff() >= 0.0)
 			continue; // no zero points
 
@@ -310,8 +312,11 @@ void smooth_extremality(
 	igl::adjacency_list(F, A);
 
 	// calculate cotan laplacian
-	SparseMatrix<double> L;
+	SparseMatrix<double> L, M, Minv;
 	igl::cotmatrix(V, F, L);
+	igl::massmatrix(V, F, igl::MASSMATRIX_TYPE_VORONOI, M);
+	igl::invert_diag(M, Minv);
+	L = Minv * L;
 
 	VectorXd LEx(V.rows());
 	for (int v = 0; v < V.rows(); v++) {
@@ -374,8 +379,12 @@ void show_singular_triangles(Viewer &viewer)
 
 void show_extremalities(Viewer &viewer)
 {
+	static int mode = 0;
 	Eigen::MatrixXd color_map;
-	igl::jet(Exmin, true, color_map);
+	if (mode == 1)
+		igl::jet(Exmin, true, color_map);
+	else
+		igl::jet(Exmax, true, color_map);
 
 	MatrixXi Fr;
 	igl::slice(F, regular_indices, 1, Fr);
@@ -383,6 +392,8 @@ void show_extremalities(Viewer &viewer)
 	viewer.data.clear();
 	viewer.data.set_mesh(V, Fr);
 	viewer.data.set_colors(color_map);
+
+	mode = 1 - mode;
 }
 
 void show_feature_lines(Viewer &viewer) {
@@ -427,12 +438,12 @@ int main(int argc, char *argv[])
 		v.ngui->addButton("Show singular triangles", [&](){
 			show_singular_triangles(v);
 		});
+		v.ngui->addButton("Show extremalities", [&](){
+			show_extremalities(v);
+		});
 		v.ngui->addButton("Smooth extremalities", [&](){
 			smooth_extremality(V, F, Kmax, Exmax);
 			smooth_extremality(V, F, Kmin, Exmin);
-		});
-		v.ngui->addButton("Show extremalities", [&](){
-			show_extremalities(v);
 		});
 		v.ngui->addButton("Show feature line", [&](){
 			show_feature_lines(v);
